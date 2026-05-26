@@ -1,7 +1,11 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// গেম স্টেট ও ভ্যারিয়েবল
+// ক্যানভাসের সাইজ ফিক্সড
+canvas.width = 800;
+canvas.height = 400;
+
+// গেম স্টেট ও ভ্যারিয়েবল
 let gravity = 0.5;
 let score = 0;
 let gameOver = false;
@@ -9,20 +13,31 @@ let spawnTimer = 0;
 let obstacles = [];
 let coins = [];
 
-// ইমেজ অবজেক্ট তৈরি এবং লোকাল সোর্স সেট করা
+// ইমেজ অবজেক্ট তৈরি করা (চোরের ইমেজটি .jpg ফরম্যাটে সেট করা হয়েছে)
 const bgImg = new Image();
-bgImg.src = 'images/background.png';
+bgImg.src = './images/background.png';
 
 const thiefImg = new Image();
-thiefImg.src = 'images/thief.png'; // ব্যাগ হাতে দৌড়ানো আসল চোর
+thiefImg.src = './images/thief.png'; // এখানে .png থেকে .jpg করে দেওয়া হয়েছে
 
 const policeImg = new Image();
-policeImg.src = 'images/police.png'; // সবুজ টুপি পরা গান হাতে ক্যারেক্টার
+policeImg.src = './images/police.png'; 
 
 const moneyBagImg = new Image();
-moneyBagImg.src = 'images/moneybag.png';
+moneyBagImg.src = './images/moneybag.png';
 
-// ব্যাকগ্রাউন্ড স্ক্রোলিং অবজেক্ট (Parallax)
+// প্লেয়ার (চোর) অবজেক্ট - সাইজ ও পজিশন ফিক্সড
+const player = {
+    x: 80,
+    y: 270, // সরাসরি মাটির ওপর সেট (400 - 90 - 40 = 270)
+    width: 90,   
+    height: 90,  
+    velocityY: 0,
+    jumpForce: -13,
+    isGrounded: true
+};
+
+// ব্যাকগ্রাউন্ড স্ক্রোলিং অবজেক্ট
 const background = {
     x1: 0,
     x2: canvas.width,
@@ -32,18 +47,7 @@ const background = {
     speed: 3
 };
 
-// প্লেয়ার (চোর) অবজেক্ট
-const player = {
-    x: 100,
-    y: 200, 
-    width: 65,   
-    height: 70,  
-    velocityY: 0,
-    jumpForce: -13,
-    isGrounded: false
-};
-
-// কিবোর্ড লিসেনার (Jump & Restart)
+// কিবোর্ড লিসেনার
 window.addEventListener("keydown", (e) => {
     if ((e.code === "Space" || e.code === "ArrowUp") && player.isGrounded && !gameOver) {
         player.velocityY = player.jumpForce;
@@ -54,21 +58,23 @@ window.addEventListener("keydown", (e) => {
     }
 });
 
-// বাধা স্পন করা
+// বাধা (পুলিশ) স্পন করা
 function spawnObstacle() {
+    let obsHeight = 75; 
+    let obsWidth = 70; 
     obstacles.push({
         x: canvas.width,
-        y: canvas.height - 90, 
-        width: 65,
-        height: 65,
+        y: canvas.height - obsHeight - 40, 
+        width: obsWidth,
+        height: obsHeight,
         speed: 6,
         image: policeImg
     });
 }
 
-// কয়েন/টাকার ব্যাগ স্পন করা
+// টাকার ব্যাগ স্পন করা
 function spawnCoin() {
-    let coinY = Math.random() * (canvas.height - 200) + 80; 
+    let coinY = Math.random() * (canvas.height - 220) + 60; 
     coins.push({
         x: canvas.width,
         y: coinY,
@@ -83,27 +89,27 @@ function spawnCoin() {
 function update() {
     if (gameOver) return;
 
-    // ১. প্যারালাক্স ব্যাকগ্রাউন্ড মুভমেন্ট
+    // ১. ব্যাকগ্রাউন্ড মুভমেন্ট
     background.x1 -= background.speed;
     background.x2 -= background.speed;
 
     if (background.x1 <= -background.width) background.x1 = background.width;
     if (background.x2 <= -background.width) background.x2 = background.width;
 
-    // ২. প্লেয়ার ফিজিক্স ও গ্র্যাভিটি
+    // ২. প্লেয়ার ফিজিক্স ও গ্র্যাভিটি
     player.velocityY += gravity;
     player.y += player.velocityY;
 
-    let floorY = canvas.height - player.height - 25;
+    let floorY = canvas.height - player.height - 40;
     if (player.y >= floorY) {
         player.y = floorY;
         player.velocityY = 0;
         player.isGrounded = true;
     }
 
-    // ৩. টাইমার অনুযায়ী অবজেক্ট স্পন করা
+    // ৩. টাইমার অনুযায়ী অবজেক্ট স্পন
     spawnTimer++;
-    if (spawnTimer > 110) {
+    if (spawnTimer > 115) {
         if (Math.random() > 0.4) {
             spawnObstacle();
         } else {
@@ -112,10 +118,11 @@ function update() {
         spawnTimer = 0;
     }
 
-    // ৪. বাধা আপডেট ও নিখুঁত কলিশন চেক (Bounding Box এডজাস্টমেন্ট)
+    // ৪. বাধা (পুলিশ) আপডেট ও কলিশন
     for (let i = obstacles.length - 1; i >= 0; i--) {
         obstacles[i].x -= obstacles[i].speed;
 
+        // কলিশন চেক
         if (
             player.x + 15 < obstacles[i].x + obstacles[i].width - 15 &&
             player.x + player.width - 15 > obstacles[i].x + 15 &&
@@ -130,7 +137,7 @@ function update() {
         }
     }
 
-    // ৫. কয়েন আপডেট ও কালেকশন চেক
+    // ৫. কয়েন আপডেট ও কালেকশন
     for (let i = coins.length - 1; i >= 0; i--) {
         coins[i].x -= coins[i].speed;
 
@@ -151,50 +158,55 @@ function update() {
     }
 }
 
-// স্ক্রিনে সবকিছু ড্র করা
+// স্ক্রিনে ড্র করা
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // ১. ব্যাকগ্রাউন্ড ড্র 
+    // ১. ব্যাকগ্রাউন্ড ড্র
     if (bgImg.complete && bgImg.naturalWidth !== 0) {
         ctx.drawImage(bgImg, background.x1, background.y, background.width, background.height);
         ctx.drawImage(bgImg, background.x2, background.y, background.width, background.height);
     } else {
-        ctx.fillStyle = "#1a1a1a"; 
+        ctx.fillStyle = "#3aafde"; 
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    // গ্রাউন্ড/মাটি আঁকা
-    ctx.fillStyle = "#222";
-    ctx.fillRect(0, canvas.height - 25, canvas.width, 25);
-    ctx.fillStyle = "#00ff66";
-    ctx.fillRect(0, canvas.height - 27, canvas.width, 2); 
+    // মাটি আঁকা
+    ctx.fillStyle = "#222"; 
+    ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+    ctx.fillStyle = "#00ff66"; 
+    ctx.fillRect(0, canvas.height - 42, canvas.width, 2); 
 
-    // ২. ক্যারেক্টার ড্র করার ম্যাজিক ট্রিক (CSS Filter)
-    // এই ফিল্টারটি ছবির চারপাশের উজ্জ্বল সাদা ব্যাকগ্রাউন্ডকে স্বচ্ছ করে দেবে এবং মেইন অবজেক্ট নিখুঁতভাবে দেখাবে!
-    ctx.filter = "contrast(120%) multiply-or-mix"; // ব্রাউজার-ফ্রেন্ডলি ব্লেন্ড
+    // ২. অবজেক্ট ও ক্যারেক্টার ড্র করা
     
-    // প্লেয়ার ড্র (থীফ ইমেজ)
-    if (thiefImg.complete && thiefImg.naturalWidth !== 0) {
-        ctx.drawImage(thiefImg, player.x, player.y, player.width, player.height);
-    }
-
-    // বাধা ড্র (পুলিশ ইমেজ)
-    obstacles.forEach(obs => {
-        if (policeImg.complete && policeImg.naturalWidth !== 0) {
-            ctx.drawImage(obs.image, obs.x, obs.y, obs.width, obs.height);
-        }
-    });
-
-    // কয়েন ড্র (মানিব্যাগ ইমেজ)
+    // কয়েন/মানিব্যাগ ড্র
     coins.forEach(coin => {
         if (moneyBagImg.complete && moneyBagImg.naturalWidth !== 0) {
-            ctx.drawImage(coin.image, coin.x, coin.y, coin.width, coin.height);
+            ctx.drawImage(moneyBagImg, coin.x, coin.y, coin.width, coin.height);
+        } else {
+            ctx.fillStyle = "gold";
+            ctx.fillRect(coin.x, coin.y, coin.width, coin.height);
         }
     });
 
-    // ফিল্টার রিসেট করা (যাতে টেক্সট বা গেম ওভার স্ক্রিনে ইফেক্ট না পড়ে)
-    ctx.filter = "none";
+    // বাধা (পুলিশ) ড্র
+    obstacles.forEach(obs => {
+        if (policeImg.complete && policeImg.naturalWidth !== 0) {
+            ctx.drawImage(policeImg, obs.x, obs.y, obs.width, obs.height);
+        } else {
+            ctx.fillStyle = "red"; 
+            ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+        }
+    });
+
+    // প্লেয়ার (চোর) ড্র
+    if (thiefImg.complete && thiefImg.naturalWidth !== 0) {
+        ctx.drawImage(thiefImg, player.x, player.y, player.width, player.height);
+    } else {
+        // ইমেজ লোড হতে সমস্যা হলে ব্যাকআপ নীল বক্স দেখাবে
+        ctx.fillStyle = "blue";
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+    }
 
     // স্কোরবোর্ড
     ctx.fillStyle = "#00ff66";
@@ -227,8 +239,8 @@ function resetGame() {
     score = 0;
     spawnTimer = 0;
     gameOver = false;
-    player.y = 50; 
     player.velocityY = 0;
+    player.y = 270; 
 }
 
 // মেইন গেম লুপ
@@ -238,5 +250,5 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-// সরাসরি লুপ স্টার্ট (কোনো সিকিউরিটি ব্লকিং কন্ডিশন ছাড়া)
+// গেম স্টার্ট
 gameLoop();
