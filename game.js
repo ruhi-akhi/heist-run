@@ -13,12 +13,14 @@ let spawnTimer = 0;
 let obstacles = [];
 let coins = [];
 
-// ইমেজ অবজেক্ট তৈরি করা (চোরের ইমেজটি .jpg ফরম্যাটে সেট করা হয়েছে)
+// ব্যাকগ্রাউন্ড মিউজিক সেটআপ
+const bgMusic = new Audio('./bg-music.mp3');
+bgMusic.loop = true; // মিউজিকটি লুপে চলতেই থাকবে
+bgMusic.volume = 0.4; // ভলিউম (০.০ থেকে ১.০ পর্যন্ত সেট করা যায়)
+
+// ইমেজ অবজেক্ট তৈরি
 const bgImg = new Image();
 bgImg.src = './images/background.png';
-
-const thiefImg = new Image();
-thiefImg.src = './images/thief.png'; // এখানে .png থেকে .jpg করে দেওয়া হয়েছে
 
 const policeImg = new Image();
 policeImg.src = './images/police.png'; 
@@ -26,10 +28,22 @@ policeImg.src = './images/police.png';
 const moneyBagImg = new Image();
 moneyBagImg.src = './images/moneybag.png';
 
+// চোরের ইমেজ ডিক্লেয়ারেশন (ডায়নামিক ব্যাকআপ লজিক সহ)
+const thiefImg = new Image();
+thiefImg.src = './images/thief.png'; 
+
+thiefImg.onerror = function() {
+    if (thiefImg.src.indexOf('thief.png') !== -1) {
+        thiefImg.src = './images/thief .png'; 
+    } else if (thiefImg.src.indexOf('thief%20.png') !== -1 || thiefImg.src.indexOf('thief .png') !== -1) {
+        thiefImg.src = './images/thief.jpg';
+    }
+};
+
 // প্লেয়ার (চোর) অবজেক্ট - সাইজ ও পজিশন ফিক্সড
 const player = {
     x: 80,
-    y: 270, // সরাসরি মাটির ওপর সেট (400 - 90 - 40 = 270)
+    y: 270, 
     width: 90,   
     height: 90,  
     velocityY: 0,
@@ -49,6 +63,11 @@ const background = {
 
 // কিবোর্ড লিসেনার
 window.addEventListener("keydown", (e) => {
+    // যেকোনো কি চাপলেই যেন ব্রাউজারের পলিসি অনুযায়ী মিউজিক প্লে হওয়া শুরু করে
+    if (!gameOver) {
+        bgMusic.play().catch(err => console.log("Music play blocked until user interaction."));
+    }
+
     if ((e.code === "Space" || e.code === "ArrowUp") && player.isGrounded && !gameOver) {
         player.velocityY = player.jumpForce;
         player.isGrounded = false;
@@ -58,10 +77,10 @@ window.addEventListener("keydown", (e) => {
     }
 });
 
-// বাধা (পুলিশ) স্পন করা
+// বাধা (পুলিশ) স্পন করা - টুপি কাটা পড়া ফিক্স করার জন্য সাইজ বাড়ানো হলো
 function spawnObstacle() {
-    let obsHeight = 75; 
-    let obsWidth = 70; 
+    let obsHeight = 90; // পুলিশের উচ্চতা ৭৫ থেকে ৯০ করা হলো (টুপি ফিক্স)
+    let obsWidth = 85;  // পুলিশের প্রস্থ ৭০ থেকে ৮৫ করা হলো
     obstacles.push({
         x: canvas.width,
         y: canvas.height - obsHeight - 40, 
@@ -130,6 +149,7 @@ function update() {
             player.y + player.height > obstacles[i].y + 10
         ) {
             gameOver = true;
+            bgMusic.pause(); // গেম ওভার হলে মিউজিক বন্ধ হবে
         }
 
         if (obstacles[i].x + obstacles[i].width < 0) {
@@ -203,7 +223,6 @@ function draw() {
     if (thiefImg.complete && thiefImg.naturalWidth !== 0) {
         ctx.drawImage(thiefImg, player.x, player.y, player.width, player.height);
     } else {
-        // ইমেজ লোড হতে সমস্যা হলে ব্যাকআপ নীল বক্স দেখাবে
         ctx.fillStyle = "blue";
         ctx.fillRect(player.x, player.y, player.width, player.height);
     }
@@ -241,6 +260,10 @@ function resetGame() {
     gameOver = false;
     player.velocityY = 0;
     player.y = 270; 
+    
+    // রিস্টার্ট দিলে মিউজিক আবার শুরু থেকে বাজবে
+    bgMusic.currentTime = 0;
+    bgMusic.play().catch(err => console.log("Music play blocked."));
 }
 
 // মেইন গেম লুপ
