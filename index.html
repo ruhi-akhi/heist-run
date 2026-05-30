@@ -3,29 +3,491 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Heist Run - Break The Bank</title>
+    <title>3D Endless Thief Runner - Super Balanced Edition</title>
     <style>
-        body {
-            margin: 0;
-            background-color: #111; /* ডার্ক ব্যাকগ্রাউন্ড */
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            overflow: hidden;
+        body { 
+            margin: 0; 
+            background: #0d0d0d; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            overflow: hidden; 
             font-family: sans-serif;
         }
-        canvas {
-            border: 4px solid #00ff66; /* আপনার পছন্দের নিয়ন গ্রিন বর্ডার */
-            background-color: #1a1a1a; 
-            box-shadow: 0 0 20px #00ff66;
+        canvas { 
+            box-shadow: 0 0 35px rgba(0,0,0,0.9); 
+            border-radius: 12px;
         }
     </style>
 </head>
 <body>
 
-    <canvas id="gameCanvas" width="800" height="400"></canvas>
+<canvas id="gameCanvas"></canvas>
 
-    <script src="game.js"></script>
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// মোবাইল ভিউ রেশিও
+canvas.width = 430;
+canvas.height = 760;
+
+// গেম স্টেট ও ভ্যারিয়েবল
+let score = 0;
+let coinsCollected = 0;
+let gameOver = false;
+let gameSpeed = 2.2; // [ফিক্সড]: শুরুর স্পিড ৩.৫ থেকে কমিয়ে ২.২ করা হলো যাতে খুবই ধীরেসুস্থে শুরু হয়
+let spawnTimer = 0;
+let items = [];
+let roadsideDecorations = []; 
+let currentLevel = 1;
+const maxLevel = 100;
+
+// ১০ সেকেন্ড লেভেল টাইমার
+let levelTimer = 0; 
+
+// ৩ডি ভ্যানিশিং পয়েন্ট
+const vanishingPointX = canvas.width / 2;
+const vanishingPointY = canvas.height * 0.44; 
+
+// 🎵 অডিও পাথ
+const bgMusic = new Audio('./sounds/bg-music.mp3'); bgMusic.loop = true; bgMusic.volume = 0.4;
+const coinSound = new Audio('./sounds/coin.mp3'); coinSound.volume = 0.5;
+const bustedSound = new Audio('./sounds/busted.mp3'); bustedSound.volume = 0.7;
+const jumpSound = new Audio('./sounds/jump.mp3'); jumpSound.volume = 0.6; 
+
+// 🖼️ 이미지 অবজেক্টস
+const bgImg = new Image(); 
+function updateBackground() {
+    if (currentLevel === 1) {
+        bgImg.src = './images/background_level1.png';
+    } else if (currentLevel === 2) {
+        bgImg.src = './images/background_level2.png';
+    } else {
+        bgImg.src = './images/background_level3.png';
+    }
+}
+updateBackground();
+
+const thiefImg = new Image(); thiefImg.src = './images/thief.png'; 
+const moneyBagImg = new Image(); moneyBagImg.src = './images/moneybag.png';
+const policeImg = new Image(); policeImg.src = './images/police.png'; 
+const logImg = new Image(); logImg.src = './images/log_transparent.png';
+const carImg = new Image(); carImg.src = './images/car.png'; 
+const trainImg = new Image(); trainImg.src = './images/train.png';
+
+// প্লেয়ার (চোর) অবজেক্ট
+const player = {
+    lane: 1, 
+    x: canvas.width / 2,
+    baseY: canvas.height - 180, 
+    y: canvas.height - 180,
+    width: 140,  
+    height: 170, 
+    isDashing: false,
+    dashTimer: 0,
+    dashCooldown: 0,
+    animTimer: 0,
+    runTilt: 0,
+    
+    // ৩ডি জাম্প ফিজিক্স
+    isJumping: false,
+    jumpY: 0,       
+    jumpVelocity: 0,
+    gravity: 0.65 
+};
+
+// 🚔 পুলিশ অবজেক্ট
+const police = {
+    x: canvas.width / 2,
+    y: canvas.height + 150, 
+    width: 145,  
+    height: 175
+};
+
+function getLaneX(lane, progress) {
+    let startX = vanishingPointX; 
+    let endX = 75 + lane * 140; 
+    return startX + (endX - startX) * progress;
+}
+
+// ইনপুট কন্ট্রোল
+window.addEventListener("keydown", (e) => {
+    if (gameOver) {
+        if (e.code === "KeyR") resetGame();
+        return;
+    }
+
+    bgMusic.play().catch(err => console.log("Audio safety"));
+
+    if ((e.code === "ArrowLeft" || e.code === "KeyA") && player.lane > 0) {
+        player.lane--;
+    }
+    if ((e.code === "ArrowRight" || e.code === "KeyD") && player.lane < 2) {
+        player.lane++;
+    }
+
+    // ৩ডি জাম্প
+    if ((e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") && !player.isJumping) {
+        player.isJumping = true;
+        player.jumpVelocity = 14; 
+        jumpSound.currentTime = 0;
+        jumpSound.play().catch(err => console.log("Jump audio"));
+    }
+
+    // সুপার ড্যাশ
+    if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+        if (player.dashCooldown === 0 && !player.isDashing) {
+            player.isDashing = true;
+            player.dashTimer = 15; 
+            player.dashCooldown = 150; 
+            gameSpeed += 2; // [ফিক্সড]: ড্যাশ বুস্ট স্পিড ৩ থেকে কমিয়ে ২ করা হলো
+        }
+    }
+});
+
+// স্মার্ট স্পন সিস্টেম
+function spawnWave() {
+    let rand = Math.random();
+
+    // কয়েন স্পন
+    if (rand < 0.45) {
+        let coinCount = Math.floor(Math.random() * 3) + 3; 
+        let waveLane = Math.floor(Math.random() * 3);
+        let isAirCoinWave = Math.random() > 0.6; 
+
+        for (let i = 0; i < coinCount; i++) {
+            items.push({
+                lane: waveLane,
+                progress: -(i * 0.22), // কয়েনগুলোর মধ্যকার গ্যাপ আরেকটু বাড়ানো হলো যাতে রিঅ্যাক্ট করা সহজ হয়
+                isObstacle: false,
+                isAirCoin: isAirCoinWave, 
+                width: 25, 
+                height: 25
+            });
+        }
+    } 
+    // কার, ট্রেন এবং লগ অবস্টাকল স্পন
+    else {
+        let obstacleLane = Math.floor(Math.random() * 3);
+        let obstacleType = "log"; 
+        let obstacleRand = Math.random();
+
+        if (currentLevel >= 2) {
+            if (obstacleRand > 0.4 && obstacleRand <= 0.75) {
+                obstacleType = "car";
+            } else if (obstacleRand > 0.75) {
+                obstacleType = "train";
+            }
+        }
+
+        items.push({
+            lane: obstacleLane,
+            progress: 0,
+            isObstacle: true,
+            type: obstacleType, 
+            width: obstacleType === "train" ? 85 : 70,
+            height: obstacleType === "train" ? 75 : 45
+        });
+    }
+
+    if (Math.random() > 0.4) {
+        let side = Math.random() > 0.5 ? -1 : 1; 
+        roadsideDecorations.push({
+            side: side,
+            progress: 0,
+            angle: (Math.random() * 60 - 30) * Math.PI / 180, 
+            scaleFactor: Math.random() * 0.3 + 0.85 
+        });
+    }
+}
+
+// গেম লজিক আপডেট
+function update() {
+    if (gameOver) {
+        if (police.y > player.y - 15) {
+            police.y -= 9; 
+        }
+        return;
+    }
+
+    // [ফিক্সড]: ১০ সেকেন্ড পর পর নেক্সট লেভেলে যাবে, তবে স্পিড মাত্র ০.০৮ করে বাড়বে (যা একদম ব্যালেন্সড এবং খেলার যোগ্য)
+    if (currentLevel < maxLevel) {
+        levelTimer++;
+        if (levelTimer >= 600) { 
+            currentLevel++;
+            gameSpeed += 0.08; // আগে ০.৩ বাড়ত, এখন মাত্র ০.০৮ বাড়বে যাতে লেভেল ২ বা ৩ এ গেম কঠিন না হয়ে যায়
+            levelTimer = 0;
+            updateBackground(); 
+        }
+    }
+
+    // প্রতি ফ্রেমে ১ স্কোর বাড়বে
+    score++;
+
+    // ৩ডি জাম্প ফিজিক্স
+    if (player.isJumping) {
+        player.jumpY += player.jumpVelocity;
+        player.jumpVelocity -= player.gravity;
+
+        if (player.jumpY <= 0) {
+            player.jumpY = 0;
+            player.isJumping = false;
+        }
+        player.y = player.baseY - player.jumpY;
+        player.runTilt = 0;
+    } else {
+        player.animTimer += player.isDashing ? 0.35 : 0.22;
+        player.y = player.baseY + Math.abs(Math.sin(player.animTimer)) * -12; 
+        player.runTilt = Math.sin(player.animTimer) * 0.05; 
+    }
+
+    police.x = player.x; 
+
+    let targetX = 75 + player.lane * 140;
+    player.x += (targetX - player.x) * 0.25;
+
+    // ড্যাশ মেকানিক্স
+    if (player.isDashing) {
+        player.dashTimer--;
+        if (player.dashTimer <= 0) {
+            player.isDashing = false;
+            gameSpeed -= 2; 
+        }
+    }
+    if (player.dashCooldown > 0) player.dashCooldown--;
+
+    spawnTimer++;
+    // অবস্টাকল স্পন হওয়ার গ্যাপ বাড়ানো হলো যাতে ঘনঘন অবস্টাকল না আসে
+    let spawnInterval = Math.max(38, 75 - currentLevel * 1.2); 
+    if (spawnTimer > spawnInterval) {
+        spawnWave();
+        spawnTimer = 0;
+    }
+
+    // ডেকোরেশন মুভমেন্ট
+    for (let i = roadsideDecorations.length - 1; i >= 0; i--) {
+        let dec = roadsideDecorations[i];
+        dec.progress += (gameSpeed) * 0.0035;
+        if (dec.progress > 1.05) roadsideDecorations.splice(i, 1);
+    }
+
+    // আইটেম ও অবস্টাকল মুভমেন্ট লুপ
+    for (let i = items.length - 1; i >= 0; i--) {
+        let item = items[i];
+        
+        // [ফিক্সড]: কার এবং ট্রেনের স্পিড নরমাল রাখা হলো যাতে এক্সট্রা স্পিড বুস্ট না নেয়
+        let itemSpeedMultiplier = 1.0;
+        
+        item.progress += (gameSpeed * itemSpeedMultiplier) * 0.0035;
+
+        if (item.progress < 0) continue;
+
+        // ৩ডি হিটবক্স নিখুঁত কলিশন জোন (প্লেয়ারের একটু কাছে আসার পর কলিশন কাউন্ট হবে, রিঅ্যাক্ট করার বেশি টাইম পাবেন)
+        if (item.progress >= 0.88 && item.progress <= 0.96) {
+            if (player.lane === item.lane) {
+                if (item.isObstacle) {
+                    let canJumpOver = item.type !== "train" && player.jumpY > 45;
+                    
+                    if (!player.isJumping || !canJumpOver) {
+                        gameOver = true; 
+                        bgMusic.pause();
+                        bustedSound.currentTime = 0;
+                        bustedSound.play();
+                        police.y = canvas.height + 60; 
+                    }
+                } else {
+                    // কয়েন কালেক্ট লজিক
+                    let coinCollectedSuccessfully = false;
+                    
+                    if (item.isAirCoin && player.jumpY > 40) {
+                        coinCollectedSuccessfully = true; 
+                    } else if (!item.isAirCoin && player.jumpY < 60) {
+                        coinCollectedSuccessfully = true; 
+                    }
+
+                    if (coinCollectedSuccessfully) {
+                        score += 100;
+                        coinsCollected++;
+                        coinSound.currentTime = 0;
+                        coinSound.play();
+                        items.splice(i, 1);
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if (item.progress > 1.05) {
+            items.splice(i, 1);
+        }
+    }
+}
+
+// স্ক্রিন ড্রয়িং
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // ১. ব্যাকগ্রাউন্ড
+    if (bgImg.complete && bgImg.naturalWidth !== 0) {
+        ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+    } else {
+        ctx.fillStyle = "#1a365d"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // ২. ডেকোরেশন
+    roadsideDecorations.forEach(dec => {
+        let edgeX = dec.side === -1 ? 40 : canvas.width - 40;
+        let currentX = vanishingPointX + (edgeX - vanishingPointX) * dec.progress;
+        let currentY = vanishingPointY + (canvas.height - vanishingPointY) * dec.progress;
+
+        let scaleWidth = (65 + (65 * dec.progress * 4.5)) * dec.scaleFactor;
+        let scaleHeight = (38 + (38 * dec.progress * 4.5)) * dec.scaleFactor;
+
+        if (logImg.complete && logImg.naturalWidth !== 0) {
+            ctx.save();
+            ctx.translate(currentX, currentY);
+            ctx.rotate(dec.angle); 
+            ctx.drawImage(logImg, -scaleWidth / 2, -scaleHeight / 2, scaleWidth, scaleHeight);
+            ctx.restore();
+        }
+    });
+
+    // ৩. অবস্টাকল ও কয়েন রেন্ডার
+    items.forEach(item => {
+        if (item.progress < 0) return; 
+
+        let currentX = getLaneX(item.lane, item.progress);
+        let baseHeightY = vanishingPointY + (canvas.height - vanishingPointY) * item.progress;
+        
+        // ৩ডি এয়ার কয়েন হাইট প্রজেকশন ফিক্স
+        let currentY = item.isAirCoin ? baseHeightY - (65 * item.progress * 2) : baseHeightY;
+        
+        let scaleWidth = item.width + (item.width * item.progress * 4.5);
+        let scaleHeight = item.height + (item.height * item.progress * 4.5);
+
+        if (item.isObstacle) {
+            if (item.type === "car") {
+                if (carImg.complete && carImg.naturalWidth !== 0) {
+                    ctx.drawImage(carImg, currentX - scaleWidth / 2, currentY - scaleHeight, scaleWidth, scaleHeight);
+                } else {
+                    ctx.fillStyle = "#e53e3e"; ctx.fillRect(currentX - scaleWidth / 2, currentY - scaleHeight, scaleWidth, scaleHeight);
+                }
+            } else if (item.type === "train") {
+                if (trainImg.complete && trainImg.naturalWidth !== 0) {
+                    ctx.drawImage(trainImg, currentX - scaleWidth / 2, currentY - scaleHeight, scaleWidth, scaleHeight);
+                } else {
+                    ctx.fillStyle = "#2b6cb0"; ctx.fillRect(currentX - scaleWidth / 2, currentY - scaleHeight, scaleWidth, scaleHeight);
+                }
+            } else {
+                if (logImg.complete && logImg.naturalWidth !== 0) {
+                    ctx.drawImage(logImg, currentX - scaleWidth / 2, currentY - scaleHeight + (scaleHeight * 0.15), scaleWidth, scaleHeight);
+                }
+            }
+        } else {
+            if (moneyBagImg.complete && moneyBagImg.naturalWidth !== 0) {
+                ctx.drawImage(moneyBagImg, currentX - scaleWidth / 2, currentY - scaleWidth / 2, scaleWidth, scaleWidth);
+            } else {
+                ctx.fillStyle = "#ffd700"; ctx.beginPath(); ctx.arc(currentX, currentY - scaleWidth/4, scaleWidth / 2, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+    });
+
+    // ৪. ড্যাশ ট্রেইল
+    if (player.isDashing) {
+        ctx.save();
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = "#00ffff";
+        ctx.fillRect(player.x - player.width / 2 - 10, player.y, player.width + 20, player.height);
+        ctx.restore();
+    }
+
+    // ۵. চোর প্লেয়ার রেন্ডার
+    if (thiefImg.complete && thiefImg.naturalWidth !== 0) {
+        ctx.save();
+        let jumpScale = 1 - (player.jumpY * 0.0012); 
+        let currentW = player.width * jumpScale;
+        let currentH = player.height * jumpScale;
+
+        ctx.translate(player.x, player.y + currentH / 2);
+        if (!player.isJumping) {
+            ctx.rotate(player.runTilt); 
+        }
+        ctx.drawImage(thiefImg, -currentW / 2, -currentH / 2, currentW, currentH);
+        ctx.restore();
+    }
+
+    // 🚔 ৬. পুলিশ
+    if (gameOver) {
+        if (policeImg.complete && policeImg.naturalWidth !== 0) {
+            ctx.drawImage(policeImg, police.x - police.width / 2, police.y, police.width, police.height);
+        }
+    }
+
+    // ৭. ড্যাশবোর্ড UI
+    ctx.save();
+    if (logImg.complete && logImg.naturalWidth !== 0) {
+        ctx.shadowColor = "rgba(0,0,0,0.5)";
+        ctx.shadowBlur = 8;
+        ctx.drawImage(logImg, 15, 15, 275, 65); 
+    }
+    ctx.restore();
+
+    ctx.fillStyle = "#ffffff"; 
+    ctx.font = "bold 13px 'Courier New', sans-serif"; 
+    ctx.textAlign = "left";
+    ctx.fillText("SCORE:" + score, 32, 52);
+
+    ctx.fillStyle = "#ffcc00"; 
+    ctx.fillText("🪙×" + coinsCollected, 132, 52);
+
+    ctx.fillStyle = "#00ffcc";
+    ctx.fillText("LVL:" + currentLevel + "/100", 205, 52); 
+
+    // কন্ট্রোল গাইড
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillText("SPACE / ⬆ : JUMP", 25, 105);
+    
+    ctx.fillStyle = player.dashCooldown === 0 ? "#00ffff" : "#888";
+    ctx.fillText(player.dashCooldown === 0 ? "⚡ SHIFT: DASH READY" : "⏳ Dash Cooldown...", 160, 105);
+
+    // গেম ওভার পপ-আপ
+    if (gameOver) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.92)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ff3838"; ctx.font = "bold 42px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("BUSTED!", canvas.width / 2, canvas.height / 2 - 40);
+        
+        ctx.fillStyle = "#1a202c"; ctx.beginPath(); ctx.roundRect(40, canvas.height / 2, canvas.width - 80, 85, 12); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "left";
+        ctx.fillText("Total Score:", 60, canvas.height / 2 + 35);
+        ctx.textAlign = "right"; ctx.fillText(score, canvas.width - 60, canvas.height / 2 + 35);
+        ctx.fillStyle = "#ffca28"; ctx.textAlign = "left";
+        ctx.fillText("Coins Looted:", 60, canvas.height / 2 + 62);
+        ctx.textAlign = "right"; ctx.fillText(coinsCollected, canvas.width - 60, canvas.height / 2 + 62);
+
+        ctx.fillStyle = "#00ff66"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("Press 'R' to Run Again", canvas.width / 2, canvas.height / 2 + 130);
+        ctx.textAlign = "left";
+    }
+}
+
+// গেম রিসেট
+function resetGame() {
+    items = []; roadsideDecorations = []; score = 0; coinsCollected = 0; gameOver = false; player.lane = 1; spawnTimer = 0; gameSpeed = 2.2; currentLevel = 1; levelTimer = 0; player.dashCooldown = 0; player.isDashing = false; player.isJumping = false; player.jumpY = 0;
+    police.y = canvas.height + 150; 
+    updateBackground();
+    bgMusic.currentTime = 0; bgMusic.play().catch(err => console.log("Music restart waiting"));
+}
+
+function gameLoop() {
+    update(); draw(); requestAnimationFrame(gameLoop);
+}
+
+bgImg.onload = () => { gameLoop(); };
+if (bgImg.complete) { gameLoop(); }
+</script>
+
 </body>
 </html>
