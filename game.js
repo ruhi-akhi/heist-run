@@ -24,26 +24,23 @@
         SPAWN_PER_LEVEL: 0.5
     };
 
-    const COIN_SIZE = 42;
+    const COIN_SIZE = 28;
 
     const OBSTACLES = {
-        train:   { jumpable: false, w: 85, h: 75, kind: "image", img: "train" },
-        log:     { jumpable: true,  w: 72, h: 44, kind: "image", img: "log" },
-        crate:   { jumpable: true,  w: 68, h: 58, kind: "crate" },
-        cone:    { jumpable: true,  w: 50, h: 60, kind: "cone" },
-        barrier: { jumpable: false, w: 80, h: 54, kind: "barrier" }
+        train: { jumpable: false, w: 85, h: 75, kind: "image", img: "train" },
+        log:   { jumpable: true,  w: 72, h: 44, kind: "image", img: "log" },
+        cone:  { jumpable: true,  w: 48, h: 56, kind: "cone" }
     };
 
     const LEVEL_THEMES = [
-        { min: 1,  name: "Street Heist",   obstacles: [],                                              features: "Coins everywhere — learn to run!" },
-        { min: 2,  name: "Riverside Run",  obstacles: ["cone"],                                        features: "Traffic cones — jump over!" },
-        { min: 3,  name: "Metro Escape",   obstacles: ["train", "cone"],                             features: "Trains + cones — dodge & jump!" },
-        { min: 4,  name: "Timber Trap",    obstacles: ["train", "log", "cone"],                      features: "Logs on track — jump!" },
-        { min: 5,  name: "Double Trouble", obstacles: ["train", "log", "crate"],                     doubleSpawn: true, features: "Crates & double trains!" },
-        { min: 7,  name: "Road Block",     obstacles: ["train", "log", "crate", "barrier"],          features: "Barriers — switch lanes!" },
-        { min: 10, name: "Sky Loot",       obstacles: ["train", "log", "crate", "barrier", "cone"], airCoinBoost: true, features: "Air coins + all obstacles!" },
-        { min: 20, name: "Night Raid",     obstacles: ["train", "log", "crate", "barrier", "cone"], doubleSpawn: true, airCoinBoost: true, features: "Max action mode!" },
-        { min: 50, name: "Legend Heist",   obstacles: ["train", "log", "crate", "barrier", "cone"], doubleSpawn: true, airCoinBoost: true, features: "Legend difficulty!" }
+        { min: 1,  name: "Street Heist",   obstacles: [],                        features: "Coins everywhere — learn to run!" },
+        { min: 2,  name: "Riverside Run",  obstacles: ["cone"],                  features: "Traffic cones — jump over!" },
+        { min: 3,  name: "Metro Escape",   obstacles: ["train", "cone"],       features: "Trains + cones — dodge & jump!" },
+        { min: 4,  name: "Timber Trap",    obstacles: ["train", "log", "cone"],  features: "Logs on track — jump!" },
+        { min: 5,  name: "Double Trouble", obstacles: ["train", "log", "cone"],  doubleSpawn: true, features: "Double trains — stay sharp!" },
+        { min: 10, name: "Sky Loot",       obstacles: ["train", "log", "cone"], airCoinBoost: true, features: "Air coins + obstacles!" },
+        { min: 20, name: "Night Raid",     obstacles: ["train", "log", "cone"], doubleSpawn: true, airCoinBoost: true, features: "Max action mode!" },
+        { min: 50, name: "Legend Heist",   obstacles: ["train", "log", "cone"], doubleSpawn: true, airCoinBoost: true, features: "Legend difficulty!" }
     ];
 
     function getSpawnConfig(level) {
@@ -340,10 +337,10 @@
     const player = {
         lane: 1,
         x: CANVAS_W / 2,
-        baseY: CANVAS_H - 205,
-        y: CANVAS_H - 205,
-        width: 168,
-        height: 200,
+        baseY: CANVAS_H - 178,
+        y: CANVAS_H - 178,
+        width: 128,
+        height: 158,
         isDashing: false,
         dashTimer: 0,
         dashCooldown: 0,
@@ -848,8 +845,8 @@
             player.y = player.baseY - player.jumpY;
             player.runTilt = 0;
         } else {
-            player.animTimer += player.isDashing ? 0.38 : 0.30;
-            player.y = player.baseY + Math.sin(player.animTimer) * -2;
+            player.animTimer += player.isDashing ? 0.45 : 0.34;
+            player.y = player.baseY + Math.sin(player.animTimer) * -5;
             player.runTilt = 0;
         }
 
@@ -938,65 +935,109 @@
         else { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); }
     }
 
-    function drawLimb(x, y, w, h, angle, color) {
+    function drawThiefSprite(dx, dy, dw, dh, alpha) {
+        if (!imgs.thief.complete || !imgs.thief.naturalWidth) return;
         ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(angle);
-        ctx.fillStyle = color;
-        if (ctx.roundRect) {
-            ctx.beginPath();
-            ctx.roundRect(-w / 2, -h, w, h, w * 0.3);
-            ctx.fill();
-        } else {
-            ctx.fillRect(-w / 2, -h, w, h);
-        }
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(imgs.thief, px(dx), px(dy), dw, dh);
         ctx.restore();
     }
 
-    function drawAnimatedThief() {
-        const tw = player.width;
-        const th = player.height;
+    function drawFootSparks(x, y) {
+        for (let i = 0; i < 5; i++) {
+            const a = (i / 5) * Math.PI * 2 + player.animTimer;
+            const dist = 6 + (i % 3) * 4;
+            ctx.fillStyle = i % 2 === 0 ? "#ffd54f" : "#fff8e1";
+            ctx.globalAlpha = 0.55 - i * 0.08;
+            ctx.beginPath();
+            ctx.arc(px(x + Math.cos(a) * dist), px(y + Math.sin(a) * dist * 0.4), 2 + i * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    function drawProThief() {
         const cx = player.x;
         const cy = player.y;
+        const w = player.width;
+        const h = player.height;
         const t = player.animTimer;
-        const jumping = player.isJumping;
+        const jump = player.isJumping;
+        const footY = player.baseY + h - 6;
 
-        const shadowW = Math.max(28, 55 - player.jumpY * 0.2);
-        const shadowY = px(player.baseY + th - 8);
-        ctx.fillStyle = "rgba(0,0,0,0.4)";
+        const shadowW = Math.max(22, 42 - player.jumpY * 0.18);
+        ctx.fillStyle = "rgba(0,0,0,0.32)";
         ctx.beginPath();
-        ctx.ellipse(px(cx), shadowY, shadowW, 9, 0, 0, Math.PI * 2);
+        ctx.ellipse(px(cx), px(footY + 4), shadowW, 7, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        const legSwing = jumping ? 0.35 : Math.sin(t) * 0.65;
-        const armSwing = jumping ? -0.9 : Math.sin(t + Math.PI) * 0.55;
-        const footY = cy + th - 18;
+        const runBob = jump ? 0 : Math.sin(t) * 3;
+        const runSway = jump ? 0 : Math.sin(t * 2) * 1.5;
+        const squash = jump ? 1.04 : 1 - Math.abs(Math.sin(t)) * 0.025;
+        const targetX = 75 + player.lane * 140;
+        const lean = Math.max(-0.06, Math.min(0.06, (targetX - cx) * 0.0008));
 
-        drawLimb(cx - 16, footY, 14, 44, legSwing, "#4a5568");
-        drawLimb(cx + 16, footY, 14, 44, -legSwing, "#4a5568");
-        drawLimb(cx - 30, cy + th * 0.42, 11, 36, armSwing, "#f6c89f");
-        drawLimb(cx + 30, cy + th * 0.42, 11, 36, -armSwing, "#f6c89f");
+        if (player.isDashing && imgs.thief.complete) {
+            for (let g = 3; g >= 1; g--) {
+                drawThiefSprite(cx - w / 2 - g * 10, cy + runBob + 2, w, h, 0.12 * g);
+            }
+        }
+
+        if (!jump && Math.sin(t) > 0.82) {
+            drawFootSparks(cx, footY);
+        }
 
         ctx.save();
         if (player.invincible > 0 && Math.floor(player.invincible / 8) % 2 === 0) {
-            ctx.globalAlpha = 0.6;
+            ctx.globalAlpha = 0.55;
         }
+
+        ctx.translate(px(cx + runSway), px(cy + h / 2 + runBob));
+        ctx.rotate(lean);
+        ctx.scale(1, squash);
+
         if (imgs.thief.complete && imgs.thief.naturalWidth) {
             ctx.shadowColor = "rgba(0,0,0,0.45)";
-            ctx.shadowBlur = jumping ? 10 : 6;
-            ctx.shadowOffsetY = 3;
-            ctx.drawImage(imgs.thief, px(cx - tw / 2), px(cy), tw, th);
+            ctx.shadowBlur = jump ? 12 : 7;
+            ctx.shadowOffsetY = 4;
+            ctx.drawImage(imgs.thief, px(-w / 2), px(-h / 2), w, h);
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetY = 0;
         } else {
             ctx.fillStyle = "#5b6ee1";
-            ctx.beginPath();
-            ctx.ellipse(cx, cy + th * 0.35, tw * 0.32, th * 0.38, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = "#f6c89f";
-            ctx.beginPath();
-            ctx.arc(cx, cy + th * 0.12, tw * 0.18, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.fillRect(px(-w / 2), px(-h / 2), w, h);
         }
+
+        ctx.restore();
+    }
+
+    function drawCoin(cx, cy, size) {
+        const x = px(cx);
+        const y = px(cy);
+        const r = size / 2;
+
+        ctx.save();
+        ctx.shadowColor = "rgba(255,200,0,0.55)";
+        ctx.shadowBlur = 10;
+        const g = ctx.createRadialGradient(x - r * 0.2, y - r * 0.2, r * 0.1, x, y, r);
+        g.addColorStop(0, "#fff4a8");
+        g.addColorStop(0.45, "#ffc107");
+        g.addColorStop(1, "#e68a00");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
         ctx.shadowBlur = 0;
+
+        ctx.strokeStyle = "#b8730a";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = "#8b5a00";
+        ctx.font = `bold ${Math.max(10, Math.floor(r * 0.9))}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("$", x, y + 1);
         ctx.restore();
     }
 
@@ -1013,17 +1054,7 @@
                 return;
             }
         }
-        if (type === "crate") {
-            ctx.fillStyle = "#8b5e3c";
-            ctx.fillRect(x, y + sh * 0.15, sw, sh * 0.85);
-            ctx.strokeStyle = "#5c3d28";
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x + 2, y + sh * 0.15 + 2, sw - 4, sh * 0.85 - 4);
-            ctx.beginPath();
-            ctx.moveTo(x, y + sh * 0.5);
-            ctx.lineTo(x + sw, y + sh * 0.5);
-            ctx.stroke();
-        } else if (type === "cone") {
+        if (type === "cone") {
             ctx.fillStyle = "#ff6b35";
             ctx.beginPath();
             ctx.moveTo(cx, y);
@@ -1035,17 +1066,6 @@
             ctx.fillRect(x + sw * 0.15, y + sh * 0.55, sw * 0.7, sh * 0.12);
             ctx.fillStyle = "#444";
             ctx.fillRect(x + sw * 0.05, y + sh * 0.88, sw * 0.9, sh * 0.12);
-        } else if (type === "barrier") {
-            ctx.fillStyle = "#f59e0b";
-            ctx.fillRect(x, y + sh * 0.25, sw, sh * 0.65);
-            ctx.fillStyle = "#1f2937";
-            for (let i = 0; i < 4; i++) {
-                ctx.fillRect(x + 4 + i * (sw / 4), y + sh * 0.3, sw * 0.08, sh * 0.55);
-            }
-            ctx.fillStyle = "#ef4444";
-            ctx.beginPath();
-            ctx.arc(cx, y + sh * 0.2, sw * 0.12, 0, Math.PI * 2);
-            ctx.fill();
         }
     }
 
@@ -1064,7 +1084,23 @@
         ctx.font = "16px sans-serif";
         ctx.fillText("Endless Thief Runner", CANVAS_W / 2, 175);
 
-        drawImageOrRect(imgs.thief, CANVAS_W / 2 - 84, 210, 168, 200, "#3b82f6");
+        const menuT = Date.now() / 180;
+        const saved = { x: player.x, y: player.y, baseY: player.baseY, w: player.width, h: player.height, t: player.animTimer };
+        player.x = CANVAS_W / 2;
+        player.y = 300;
+        player.baseY = 300;
+        player.width = 128;
+        player.height = 158;
+        player.animTimer = menuT;
+        player.isJumping = false;
+        player.jumpY = 0;
+        drawProThief();
+        player.x = saved.x;
+        player.y = saved.y;
+        player.baseY = saved.baseY;
+        player.width = saved.w;
+        player.height = saved.h;
+        player.animTimer = saved.t;
 
         ctx.fillStyle = "#fff";
         ctx.font = "bold 18px sans-serif";
@@ -1166,7 +1202,8 @@
             if (item.isObstacle) {
                 drawObstacleItem(item.type, cx, cy, sw, sh);
             } else {
-                drawImageOrRect(imgs.money, px(cx - sw / 2), px(cy - sw / 2), sw, sw, "#ffd700");
+                const coinSz = Math.min(52, COIN_SIZE * (0.4 + item.progress * 1.8));
+                drawCoin(cx, cy - coinSz * 0.2, coinSz);
             }
         });
 
@@ -1189,7 +1226,7 @@
         ctx.globalAlpha = 1;
         ctx.textAlign = "left";
 
-        drawAnimatedThief();
+        drawProThief();
 
         if (gameState === State.GAME_OVER && imgs.police.complete) {
             drawImageOrRect(imgs.police, police.x - police.width / 2, police.y, police.width, police.height, "#1e40af");
